@@ -1,0 +1,29 @@
+name: Build Kalshi Data Snapshot
+
+on:
+  schedule:
+    # Runs at 6:00 AM ET (11:00 UTC) every day
+    - cron: '0 11 * * *'
+  workflow_dispatch: # allow manual trigger
+
+jobs:
+  build-snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch Kalshi data and build snapshot
+        run: node cron/build-snapshot.js
+
+      - name: Commit snapshot
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data/snapshot.json
+          git diff --cached --quiet || git commit -m "chore: update Kalshi snapshot $(date -u +'%Y-%m-%d')"
+          git push

@@ -1,0 +1,16 @@
+{
+  "name": "kalshi-dashboard",
+  "version": "1.0.0",
+  "description": "Kalshi market volume dashboard for PredictionPro.com",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "snapshot": "node cron/build-snapshot.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

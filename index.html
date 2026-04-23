@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kalshi Market Volume Dashboard — PredictionPro</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#fff;--bg2:#f8f9fa;--bg3:#f1f3f5;
+  --ink:#1a1a2e;--ink2:#495057;--ink3:#868e96;--ink4:#adb5bd;
+  --border:#e9ecef;--border2:#dee2e6;
+  --blue:#1a3aff;--blue-lt:#eef0ff;
+  --sans:'Inter',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+}
+body{font-family:var(--sans);color:var(--ink);background:var(--bg2);margin:0;padding:16px;}
+.dash{background:var(--bg);padding:8px 14px 18px;border-radius:8px;border:1px solid var(--border);max-width:1200px;margin:0 auto;}
+
+/* ── Controls ── */
+.controls-strip{display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
+.preset-group{display:flex;border:1px solid var(--border2);border-radius:3px;overflow:hidden;}
+.preset-btn{padding:2px 7px;border:none;border-right:1px solid var(--border2);background:#fff;font-family:var(--sans);font-size:9px;font-weight:500;color:var(--ink3);cursor:pointer;transition:all .12s;line-height:1.6;}
+.preset-btn:last-child{border-right:none;}
+.preset-btn:hover:not(.on){background:var(--bg2);color:var(--ink2);}
+.preset-btn.on{background:var(--blue);color:#fff;}
+.strip-sep{width:1px;height:14px;background:var(--border2);flex-shrink:0;}
+.vol-toggle{display:flex;border:1px solid var(--border2);border-radius:3px;overflow:hidden;}
+.vt-btn{padding:2px 8px;border:none;border-right:1px solid var(--border2);font-family:var(--sans);font-size:9px;font-weight:500;cursor:pointer;transition:all .12s;background:#fff;color:var(--ink3);line-height:1.6;}
+.vt-btn:last-child{border-right:none;}
+.vt-btn.on{background:var(--blue);color:#fff;}
+.vt-btn:hover:not(.on){background:var(--bg2);color:var(--ink2);}
+.custom-date{display:flex;align-items:center;gap:4px;margin-left:auto;}
+.custom-lbl{font-size:8px;color:var(--ink4);font-family:var(--mono);white-space:nowrap;}
+.date-input{font-family:var(--mono);font-size:8px;padding:2px 4px;border:1px solid var(--border2);border-radius:2px;color:var(--ink3);background:var(--bg2);width:80px;}
+.date-input:focus{outline:none;border-color:var(--blue);color:var(--ink);}
+.apply-btn{padding:2px 6px;background:var(--bg2);color:var(--ink3);border:1px solid var(--border2);border-radius:2px;font-family:var(--sans);font-size:8px;font-weight:500;cursor:pointer;line-height:1.6;}
+.apply-btn:hover{background:var(--blue);color:#fff;border-color:var(--blue);}
+
+/* ── Loading / error states ── */
+.state-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:4px;margin-bottom:8px;font-size:10px;font-family:var(--mono);}
+.state-loading{background:var(--blue-lt);color:var(--blue);border:1px solid #c5ccff;}
+.state-error{background:#fff0f0;color:#c92a2a;border:1px solid #fcc;}
+.state-cached{background:#f0fff4;color:#2f9e44;border:1px solid #b2f0c8;}
+.spinner{width:10px;height:10px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Metrics table ── */
+.metrics-table{width:100%;border-collapse:collapse;margin-bottom:8px;border:1px solid var(--border);border-radius:4px;overflow:hidden;}
+.metrics-table th{font-size:8px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);padding:4px 10px;background:var(--bg2);border-bottom:1px solid var(--border);text-align:left;}
+.metrics-table th:not(:first-child){text-align:right;}
+.metrics-table td{padding:4px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.metrics-table td:not(:first-child){text-align:right;}
+.metrics-table tr:last-child td{border-bottom:none;}
+.m-lbl{font-size:10px;font-weight:500;color:var(--ink2);}
+.m-val{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--ink);}
+.m-d{font-family:var(--mono);font-size:9px;}
+.m-spark{display:inline-block;width:40px;height:12px;vertical-align:middle;}
+.up{color:#2f9e44;}.dn{color:#c92a2a;}
+
+/* ── Panels ── */
+.full-panel{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px 12px;margin-bottom:8px;}
+.panel-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.panel-title{font-size:9px;font-weight:600;color:var(--ink2);letter-spacing:.04em;text-transform:uppercase;}
+.panel-sub{font-size:9px;color:var(--ink3);font-family:var(--mono);}
+.legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin-bottom:6px;}
+.leg-item{display:flex;align-items:center;gap:3px;font-size:9px;color:var(--ink2);}
+.leg-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.chart-wrap-full{position:relative;width:100%;height:180px;}
+.grid-bot{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+.panel{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px 12px;}
+
+/* ── Category / sport rows ── */
+.cat-item,.sport-item{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid var(--border);}
+.cat-item:last-child,.sport-item:last-child{border-bottom:none;}
+.cat-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.cat-nm,.sport-nm{font-size:10px;font-weight:500;flex:1;}
+.sport-rank{font-family:var(--mono);font-size:8px;color:var(--ink4);width:10px;}
+.cat-bar-bg,.sport-bar-bg{flex:1.5;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;}
+.cat-bar-fg,.sport-bar-fg{height:100%;border-radius:2px;}
+.sport-bar-fg{background:var(--blue);}
+.cat-vol,.sport-vol{font-family:var(--mono);font-size:9px;width:42px;text-align:right;}
+.cat-pct,.sport-pct{font-family:var(--mono);font-size:9px;color:var(--ink3);width:26px;text-align:right;}
+
+/* ── Top markets ── */
+.mkt-full{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px 12px;}
+.mkt-grid{display:grid;grid-template-columns:repeat(2,1fr);}
+.mkt-item{display:flex;align-items:baseline;gap:5px;padding:4px 8px 4px 0;border-bottom:1px solid var(--border);}
+.mkt-item:nth-child(odd){border-right:1px solid var(--border);}
+.mkt-item:nth-child(even){padding-left:10px;}
+.mkt-item:nth-last-child(-n+2){border-bottom:none;}
+.mkt-rank{font-family:var(--mono);font-size:8px;color:var(--ink4);width:10px;flex-shrink:0;}
+.mkt-name{font-size:10px;color:var(--ink);flex:1;line-height:1.3;}
+.mkt-cat{font-size:8px;font-weight:600;padding:1px 4px;border-radius:2px;flex-shrink:0;white-space:nowrap;}
+.mkt-vol{font-family:var(--mono);font-size:9px;font-weight:500;color:var(--ink);width:52px;text-align:right;flex-shrink:0;}
+
+.footnote{font-size:8px;color:var(--ink4);font-family:var(--mono);margin-top:10px;text-align:right;}
+
+@media(max-width:560px){
+  .grid-bot,.mkt-grid{grid-template-columns:1fr;}
+  .custom-date{margin-left:0;}
+  .mkt-item:nth-child(odd){border-right:none;}
+  .mkt-item:nth-child(even){padding-left:0;}
+  .mkt-item:nth-last-child(-n+2){border-bottom:1px solid var(--border);}
+  .mkt-item:last-child{border-bottom:none;}
+}
+</style>
+</head>
+<body>
+<div class="dash">
+
+  <div class="controls-strip">
+    <div class="preset-group" id="presets">
+      <button class="preset-btn" onclick="setPreset('7d',this)">7D</button>
+      <button class="preset-btn" onclick="setPreset('30d',this)">30D</button>
+      <button class="preset-btn on" onclick="setPreset('3m',this)">3M</button>
+      <button class="preset-btn" onclick="setPreset('6m',this)">6M</button>
+      <button class="preset-btn" onclick="setPreset('ytd',this)">YTD</button>
+      <button class="preset-btn" onclick="setPreset('1y',this)">1Y</button>
+    </div>
+    <div class="strip-sep"></div>
+    <div class="vol-toggle" id="volToggle">
+      <button class="vt-btn on" onclick="setVolMode('notional',this)">Volume by $</button>
+      <button class="vt-btn" onclick="setVolMode('txn',this)">By # Txn</button>
+    </div>
+    <div class="custom-date">
+      <span class="custom-lbl">Custom:</span>
+      <input type="date" class="date-input" id="d-from">
+      <span class="custom-lbl">–</span>
+      <input type="date" class="date-input" id="d-to">
+      <button class="apply-btn" onclick="applyCustom()">Apply</button>
+    </div>
+  </div>
+
+  <div id="stateBar" class="state-bar state-loading">
+    <div class="spinner"></div>
+    <span id="stateMsg">Loading live Kalshi data…</span>
+  </div>
+
+  <table class="metrics-table">
+    <thead><tr><th>Metric</th><th>Value</th><th>vs. prior period</th><th>Prior period</th><th>Trend</th></tr></thead>
+    <tbody>
+      <tr><td><span class="m-lbl">Total volume</span></td><td><span class="m-val" id="mv1">—</span></td><td><span class="m-d" id="md1">—</span></td><td><span class="m-d" style="color:var(--ink3)" id="mp1">—</span></td><td><canvas class="m-spark" id="sp1" role="img" aria-label="Volume trend"></canvas></td></tr>
+      <tr><td><span class="m-lbl">Open interest</span></td><td><span class="m-val" id="mv2">—</span></td><td><span class="m-d" id="md2">—</span></td><td><span class="m-d" style="color:var(--ink3)" id="mp2">—</span></td><td><canvas class="m-spark" id="sp2" role="img" aria-label="OI trend"></canvas></td></tr>
+      <tr><td><span class="m-lbl">Active markets</span></td><td><span class="m-val" id="mv3">—</span></td><td><span class="m-d" id="md3">—</span></td><td><span class="m-d" style="color:var(--ink3)" id="mp3">—</span></td><td><canvas class="m-spark" id="sp3" role="img" aria-label="Markets trend"></canvas></td></tr>
+      <tr><td><span class="m-lbl">Unique traders</span></td><td><span class="m-val" id="mv4">—</span></td><td><span class="m-d" id="md4">—</span></td><td><span class="m-d" style="color:var(--ink3)" id="mp4">—</span></td><td><canvas class="m-spark" id="sp4" role="img" aria-label="Traders trend"></canvas></td></tr>
+    </tbody>
+  </table>
+
+  <div class="full-panel">
+    <div class="panel-hd">
+      <span class="panel-title" id="chartTitle">Weekly volume by $ · by category</span>
+      <span class="panel-sub" id="vol-lbl">Loading…</span>
+    </div>
+    <div class="legend" id="stackLegend"></div>
+    <div class="chart-wrap-full"><canvas id="stackC" role="img" aria-label="Stacked bar chart of Kalshi volume by category">Volume by category.</canvas></div>
+  </div>
+
+  <div class="grid-bot">
+    <div class="panel">
+      <div class="panel-hd"><span class="panel-title">Volume by category</span></div>
+      <div id="catRows"><div style="font-size:10px;color:var(--ink3);padding:8px 0;">Loading…</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-hd"><span class="panel-title">Sports breakdown</span></div>
+      <div id="sportRows"><div style="font-size:10px;color:var(--ink3);padding:8px 0;">Loading…</div></div>
+    </div>
+  </div>
+
+  <div class="mkt-full">
+    <div class="panel-hd">
+      <span class="panel-title">Top markets by volume</span>
+      <span class="panel-sub" id="mkt-lbl">Loading…</span>
+    </div>
+    <div class="mkt-grid" id="mktList"><div style="font-size:10px;color:var(--ink3);padding:8px;">Loading…</div></div>
+  </div>
+
+  <div class="footnote" id="footnote">Data: Kalshi Trade API v2 · PredictionPro.com</div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────
+// The Kalshi API doesn't support CORS from browsers directly.
+// Set PROXY_URL to your deployed api/kalshi-proxy endpoint (see server.js).
+// For local dev: 'http://localhost:3001'
+// For production: 'https://your-vercel-app.vercel.app' or your domain
+const PROXY_URL = (window.KALSHI_PROXY_URL || '').replace(/\/$/, '');
+const KALSHI_BASE = 'https://api.elections.kalshi.com/trade-api/v2';
+
+// Fall back to cached data file if proxy unavailable
+const CACHE_FILE = './data/snapshot.json';
+
+// ─────────────────────────────────────────────
+// CATEGORY CONFIG
+// ─────────────────────────────────────────────
+const CAT_CONFIG = {
+  Sports:        { color: '#1a3aff', sports: true },
+  Politics:      { color: '#6741D9', sports: false },
+  Crypto:        { color: '#E8590C', sports: false },
+  Economics:     { color: '#2F9E44', sports: false },
+  Financials:    { color: '#1971C2', sports: false },
+  Entertainment: { color: '#F08C00', sports: false },
+  Other:         { color: '#adb5bd', sports: false },
+};
+
+// Kalshi API category → our display category mapping
+const CAT_MAP = {
+  'Sports':          'Sports',
+  'Politics':        'Politics',
+  'Crypto':          'Crypto',
+  'Cryptocurrency':  'Crypto',
+  'Economics':       'Economics',
+  'Economic':        'Economics',
+  'Financials':      'Financials',
+  'Finance':         'Financials',
+  'Entertainment':   'Entertainment',
+  'Climate':         'Other',
+  'Science':         'Other',
+  'Technology':      'Other',
+  'Health':          'Other',
+  'World':           'Other',
+  'Education':       'Other',
+  'Transportation':  'Other',
+};
+
+// Sport sub-categories (matched from market title keywords)
+const SPORT_KEYWORDS = {
+  'NFL':    ['nfl','football','super bowl','chiefs','eagles','patriots','cowboys'],
+  'NBA':    ['nba','basketball','celtics','lakers','warriors','heat','knicks'],
+  'MLB':    ['mlb','baseball','world series','dodgers','yankees','mets','cubs'],
+  'Golf':   ['golf','masters','pga','lpga','ryder cup','mcilroy','woods'],
+  'NHL':    ['nhl','hockey','stanley cup','oilers','bruins','rangers','leafs'],
+  'Soccer': ['soccer','mls','premier league','champions league','world cup','fifa'],
+  'Tennis': ['tennis','wimbledon','us open','french open','australian open','atp','wta'],
+};
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let stackChart = null;
+let curPreset = '3m';
+let volMode = 'notional';
+let liveData = null; // populated after API fetch
+
+// ─────────────────────────────────────────────
+// UTILS
+// ─────────────────────────────────────────────
+function fmtV(v) {
+  if (v >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
+  if (v >= 1e6) return '$' + (v / 1e6).toFixed(0) + 'M';
+  return '$' + v.toFixed(0);
+}
+function fmtT(v) {
+  if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+  if (v >= 1e3) return (v / 1e3).toFixed(0) + 'K';
+  return v.toString();
+}
+function fmtPct(a, b) {
+  if (!b || b === 0) return '—';
+  const pct = ((a - b) / b) * 100;
+  return (pct >= 0 ? '↑ ' : '↓ ') + Math.abs(pct).toFixed(1) + '%';
+}
+function setState(type, msg) {
+  const bar = document.getElementById('stateBar');
+  bar.className = 'state-bar state-' + type;
+  bar.innerHTML = type === 'loading'
+    ? `<div class="spinner"></div><span>${msg}</span>`
+    : `<span>${msg}</span>`;
+}
+function drawSpark(id, vals, up) {
+  const el = document.getElementById(id);
+  if (!el || !vals || vals.length < 2) return;
+  el.width = 40; el.height = 12;
+  const ctx = el.getContext('2d');
+  const mn = Math.min(...vals), mx = Math.max(...vals), rng = mx - mn || 1;
+  ctx.strokeStyle = up ? '#2F9E44' : '#C92A2A';
+  ctx.lineWidth = 1.2; ctx.beginPath();
+  vals.forEach((v, i) => {
+    const x = (i / (vals.length - 1)) * 38 + 1, y = 10 - ((v - mn) / rng) * 8;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+// ─────────────────────────────────────────────
+// API FETCH — via proxy or cached file
+// ─────────────────────────────────────────────
+async function fetchMarkets(params = {}) {
+  const qs = new URLSearchParams({ limit: 1000, status: 'open', ...params }).toString();
+  if (PROXY_URL) {
+    const res = await fetch(`${PROXY_URL}/api/kalshi/markets?${qs}`);
+    if (!res.ok) throw new Error(`Proxy error ${res.status}`);
+    return res.json();
+  }
+  // No proxy — try cached snapshot
+  const res = await fetch(CACHE_FILE);
+  if (!res.ok) throw new Error('No proxy configured and no cache file found');
+  return res.json();
+}
+
+async function fetchExchangeStats() {
+  if (PROXY_URL) {
+    const res = await fetch(`${PROXY_URL}/api/kalshi/exchange/status`);
+    if (!res.ok) return null;
+    return res.json();
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────
+// DATA PROCESSING
+// ─────────────────────────────────────────────
+function processMarkets(markets) {
+  const catVol = {}, catOI = {}, catTxn = {}, catMktCount = {};
+  const sportVol = {}, sportTxn = {};
+  const topMarkets = [];
+
+  Object.keys(CAT_CONFIG).forEach(c => {
+    catVol[c] = 0; catOI[c] = 0; catTxn[c] = 0; catMktCount[c] = 0;
+  });
+  Object.keys(SPORT_KEYWORDS).forEach(s => { sportVol[s] = 0; sportTxn[s] = 0; });
+
+  let totalVol = 0, totalOI = 0, totalTxn = 0, totalMarkets = 0;
+
+  markets.forEach(m => {
+    const vol = parseFloat(m.notional_value_dollars || 0) * parseFloat(m.volume_fp || 0);
+    const oi = parseFloat(m.open_interest_fp || 0) * 0.5; // approximate $ value
+    const txn = parseInt(m.volume_fp || 0);
+    const rawCat = m.category || 'Other';
+    const cat = CAT_MAP[rawCat] || 'Other';
+
+    totalVol += vol;
+    totalOI += oi;
+    totalTxn += txn;
+    totalMarkets++;
+
+    if (catVol[cat] !== undefined) {
+      catVol[cat] += vol;
+      catOI[cat] += oi;
+      catTxn[cat] += txn;
+      catMktCount[cat]++;
+    } else {
+      catVol['Other'] += vol;
+      catTxn['Other'] += txn;
+      catMktCount['Other']++;
+    }
+
+    // Sports sub-breakdown
+    if (cat === 'Sports') {
+      const titleLow = (m.title || '').toLowerCase();
+      let matched = false;
+      for (const [sport, kws] of Object.entries(SPORT_KEYWORDS)) {
+        if (kws.some(kw => titleLow.includes(kw))) {
+          sportVol[sport] += vol;
+          sportTxn[sport] += txn;
+          matched = true; break;
+        }
+      }
+      if (!matched) { sportVol['Other'] = (sportVol['Other'] || 0) + vol; }
+    }
+
+    topMarkets.push({
+      name: m.title || m.ticker,
+      cat: CAT_MAP[rawCat] || 'Other',
+      color: CAT_CONFIG[CAT_MAP[rawCat] || 'Other']?.color || '#adb5bd',
+      vol, txn,
+      ticker: m.ticker,
+    });
+  });
+
+  topMarkets.sort((a, b) => b.vol - a.vol);
+
+  return { totalVol, totalOI, totalTxn, totalMarkets, catVol, catOI, catTxn, catMktCount, sportVol, sportTxn, topMarkets: topMarkets.slice(0, 16) };
+}
+
+// ─────────────────────────────────────────────
+// RENDER
+// ─────────────────────────────────────────────
+function buildLegend() {
+  document.getElementById('stackLegend').innerHTML = Object.entries(CAT_CONFIG).map(([name, cfg]) =>
+    `<span class="leg-item"><span class="leg-dot" style="background:${cfg.color}"></span>${name}</span>`
+  ).join('');
+}
+
+function buildStackChart(data) {
+  const ctx = document.getElementById('stackC').getContext('2d');
+  if (stackChart) stackChart.destroy();
+
+  // Build period labels from data weeks (simplified for live data)
+  const labels = data.weeklyLabels || ['Current period'];
+  const datasets = Object.entries(CAT_CONFIG).map(([name, cfg]) => ({
+    label: name,
+    data: data.weeklyVol?.[name] || [data.catVol[name] || 0],
+    backgroundColor: cfg.color,
+    stack: 's',
+  }));
+
+  const isN = volMode === 'notional';
+  stackChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          mode: 'index', intersect: false,
+          backgroundColor: '#fff', borderColor: '#dee2e6', borderWidth: 1,
+          titleColor: '#495057', titleFont: { family: "'Inter',sans-serif", size: 10, weight: '600' },
+          bodyColor: '#1a1a2e', bodyFont: { family: "'IBM Plex Mono',monospace", size: 9 },
+          padding: 8,
+          callbacks: {
+            label: c => {
+              const v = c.parsed.y;
+              const tot = datasets.reduce((s, ds) => s + (ds.data[c.dataIndex] || 0), 0) || 1;
+              const pct = ((v / tot) * 100).toFixed(1);
+              return ' ' + c.dataset.label + ': ' + (isN ? fmtV(v) : fmtT(v) + ' txn') + ' (' + pct + '%)';
+            },
+            footer: items => {
+              const tot = datasets.reduce((s, ds) => s + (ds.data[items[0].dataIndex] || 0), 0);
+              return 'Total: ' + (isN ? fmtV(tot) : fmtT(tot) + ' txn');
+            }
+          }
+        }
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { color: '#adb5bd', font: { family: "'IBM Plex Mono',monospace", size: 8 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+        y: { stacked: true, grid: { color: '#f1f3f5' }, border: { display: false }, ticks: { color: '#adb5bd', font: { family: "'IBM Plex Mono',monospace", size: 8 }, callback: v => isN ? fmtV(v) : fmtT(v) } }
+      }
+    }
+  });
+}
+
+function buildMetrics(data) {
+  document.getElementById('mv1').textContent = fmtV(data.totalVol);
+  document.getElementById('mv2').textContent = fmtV(data.totalOI);
+  document.getElementById('mv3').textContent = data.totalMarkets.toLocaleString();
+  document.getElementById('mv4').textContent = '—'; // not in public API
+
+  // Delta vs prior (if we have historical snapshots)
+  const p = data.prior;
+  if (p) {
+    const setDelta = (id, curr, prev) => {
+      const el = document.getElementById(id);
+      const pct = fmtPct(curr, prev);
+      el.textContent = pct;
+      el.className = 'm-d ' + (curr >= prev ? 'up' : 'dn');
+    };
+    setDelta('md1', data.totalVol, p.totalVol);
+    setDelta('md2', data.totalOI, p.totalOI);
+    setDelta('md3', data.totalMarkets, p.totalMarkets);
+    document.getElementById('mp1').textContent = fmtV(p.totalVol);
+    document.getElementById('mp2').textContent = fmtV(p.totalOI);
+    document.getElementById('mp3').textContent = p.totalMarkets.toLocaleString();
+    drawSpark('sp1', data.sparkVol || [], true);
+    drawSpark('sp2', data.sparkOI || [], data.sparkOI?.[data.sparkOI.length-1] >= data.sparkOI?.[0]);
+    drawSpark('sp3', data.sparkMarkets || [], true);
+  } else {
+    ['md1','md2','md3','md4'].forEach(id => {
+      document.getElementById(id).textContent = 'vs. prior n/a';
+      document.getElementById(id).className = 'm-d';
+    });
+  }
+}
+
+function buildCats(data) {
+  const isN = volMode === 'notional';
+  const entries = Object.entries(CAT_CONFIG).map(([name, cfg]) => ({
+    name, color: cfg.color,
+    val: isN ? (data.catVol[name] || 0) : (data.catTxn[name] || 0),
+  })).sort((a, b) => b.val - a.val);
+  const maxVal = entries[0]?.val || 1;
+
+  document.getElementById('catRows').innerHTML = entries.map(c => {
+    const pct = ((c.val / (isN ? data.totalVol : data.totalTxn)) * 100).toFixed(1);
+    const barW = Math.round((c.val / maxVal) * 100);
+    return `<div class="cat-item">
+      <div class="cat-dot" style="background:${c.color}"></div>
+      <div class="cat-nm">${c.name}</div>
+      <div class="cat-bar-bg"><div class="cat-bar-fg" style="width:${barW}%;background:${c.color};"></div></div>
+      <div class="cat-vol">${isN ? fmtV(c.val) : fmtT(c.val)}</div>
+      <div class="cat-pct">${pct}%</div>
+    </div>`;
+  }).join('');
+}
+
+function buildSports(data) {
+  const isN = volMode === 'notional';
+  const entries = Object.entries(isN ? data.sportVol : data.sportTxn)
+    .map(([name, val]) => ({ name, val }))
+    .filter(e => e.val > 0)
+    .sort((a, b) => b.val - a.val);
+  const maxVal = entries[0]?.val || 1;
+  const totalSports = entries.reduce((s, e) => s + e.val, 0);
+
+  document.getElementById('sportRows').innerHTML = entries.map((s, i) => {
+    const pct = ((s.val / totalSports) * 100).toFixed(1);
+    return `<div class="sport-item">
+      <div class="sport-rank">${i + 1}</div>
+      <div class="sport-nm">${s.name}</div>
+      <div class="sport-bar-bg"><div class="sport-bar-fg" style="width:${Math.round((s.val/maxVal)*100)}%"></div></div>
+      <div class="sport-vol">${isN ? fmtV(s.val) : fmtT(s.val)}</div>
+      <div class="sport-pct">${pct}%</div>
+    </div>`;
+  }).join('');
+}
+
+function buildMarkets(data) {
+  const isN = volMode === 'notional';
+  const mkts = [...data.topMarkets].sort((a, b) => isN ? b.vol - a.vol : b.txn - a.txn).slice(0, 16);
+  const totalVal = mkts.reduce((s, m) => s + (isN ? m.vol : m.txn), 0) || 1;
+
+  document.getElementById('mktList').innerHTML = mkts.map((m, i) => {
+    const val = isN ? m.vol : m.txn;
+    const pct = ((val / totalVal) * 100).toFixed(1) + '%';
+    return `<div class="mkt-item">
+      <div class="mkt-rank">${i + 1}</div>
+      <div class="mkt-name">${m.name}</div>
+      <div class="mkt-cat" style="background:${m.color}18;color:${m.color};">${m.cat}</div>
+      <div class="mkt-vol">${isN ? fmtV(val) : fmtT(val)} <span style="color:var(--ink3);font-size:8px;">${pct}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function renderAll(data) {
+  buildMetrics(data);
+  buildCats(data);
+  buildSports(data);
+  buildMarkets(data);
+  buildStackChart(data);
+  const now = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  document.getElementById('vol-lbl').textContent = 'Live · as of ' + now;
+  document.getElementById('mkt-lbl').textContent = 'Open markets · as of ' + now;
+  document.getElementById('footnote').textContent = `Data: Kalshi Trade API v2 · Fetched ${now} ET · PredictionPro.com`;
+}
+
+// ─────────────────────────────────────────────
+// LOAD DATA
+// ─────────────────────────────────────────────
+async function loadData() {
+  setState('loading', 'Loading live Kalshi data…');
+  try {
+    // Fetch up to 1000 open markets (paginate if needed)
+    let allMarkets = [];
+    let cursor = '';
+    let page = 0;
+    do {
+      const params = { limit: 1000, status: 'open' };
+      if (cursor) params.cursor = cursor;
+      const json = await fetchMarkets(params);
+      allMarkets = allMarkets.concat(json.markets || []);
+      cursor = json.cursor || '';
+      page++;
+    } while (cursor && page < 5); // max 5000 markets
+
+    if (allMarkets.length === 0) throw new Error('No markets returned');
+
+    liveData = processMarkets(allMarkets);
+    renderAll(liveData);
+    setState('cached', `✓ Live data · ${allMarkets.length.toLocaleString()} markets loaded`);
+  } catch (err) {
+    console.error('Kalshi API error:', err);
+    // Try loading from cached snapshot
+    try {
+      setState('loading', 'Live fetch failed, loading cached snapshot…');
+      const res = await fetch(CACHE_FILE);
+      if (!res.ok) throw new Error('No cache available');
+      const snap = await res.json();
+      liveData = snap;
+      renderAll(snap);
+      setState('cached', `⚠ Cached data · ${snap.cachedAt || 'unknown date'} · Live API unavailable`);
+    } catch (cacheErr) {
+      setState('error', `Error: ${err.message}. Deploy the proxy server and set KALSHI_PROXY_URL.`);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+// CONTROLS
+// ─────────────────────────────────────────────
+function setVolMode(mode, btn) {
+  volMode = mode;
+  document.querySelectorAll('.vt-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  const isN = mode === 'notional';
+  document.getElementById('chartTitle').textContent = isN
+    ? 'Weekly volume by $ · by category'
+    : 'Weekly volume by # transactions · by category';
+  if (liveData) {
+    buildCats(liveData); buildSports(liveData); buildMarkets(liveData); buildStackChart(liveData);
+  }
+}
+
+function setPreset(key, btn) {
+  curPreset = key;
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  // For a live-data dashboard, preset changes the display window label
+  // Full historical range filtering requires the cron-built snapshot.json
+  // which contains weekly rollups — for now, reload to show current data
+  if (liveData) renderAll(liveData);
+}
+
+function applyCustom() {
+  const from = document.getElementById('d-from').value;
+  const to = document.getElementById('d-to').value;
+  if (!from || !to) return;
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('on'));
+  // Custom ranges require server-side historical data (see cron/build-snapshot.js)
+  setState('cached', 'Custom date ranges use cached historical data. Deploy the cron job to enable full range support.');
+  if (liveData) renderAll(liveData);
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+buildLegend();
+
+// Set today's date as default for custom range
+const today = new Date().toISOString().split('T')[0];
+const threeMonthsAgo = new Date(Date.now() - 90*24*60*60*1000).toISOString().split('T')[0];
+document.getElementById('d-from').value = threeMonthsAgo;
+document.getElementById('d-to').value = today;
+
+loadData();
+</script>
+</body>
+</html>
