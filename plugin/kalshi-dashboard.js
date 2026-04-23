@@ -106,29 +106,66 @@
     throw new Error('No PROXY_URL configured. Define KALSHI_PROXY_URL in wp-config.php.');
   }
 
+  function inferCategory(title, ticker) {
+    const t = title.toLowerCase();
+    const tk = ticker.toUpperCase();
+    if (tk.startsWith('KXNBA') || tk.startsWith('KXNFL') || tk.startsWith('KXMLB') ||
+        tk.startsWith('KXNHL') || tk.startsWith('KXPGA') || tk.startsWith('KXSOC') ||
+        tk.startsWith('KXTEN') || tk.startsWith('KXNCAA') || tk.startsWith('KXMMA') ||
+        t.includes('nba') || t.includes('nfl') || t.includes('mlb') ||
+        t.includes('nhl') || t.includes('golf') || t.includes('soccer') ||
+        t.includes('tennis') || t.includes('playoff') || t.includes('championship')) {
+      return 'Sports';
+    }
+    if (tk.startsWith('KXBTC') || tk.startsWith('KXETH') || t.includes('bitcoin') ||
+        t.includes('crypto') || t.includes('ethereum')) return 'Crypto';
+    if (t.includes('fed') || t.includes('gdp') || t.includes('inflation') ||
+        t.includes('unemployment') || t.includes('jobs') || t.includes('cpi')) return 'Economics';
+    if (t.includes('election') || t.includes('president') || t.includes('congress') ||
+        t.includes('senate') || t.includes('trump') || t.includes('bill passes')) return 'Politics';
+    return 'Other';
+  }
+  
+  
   // ── Data processing ────────────────────────────────────────────────────
   function processMarkets(markets) {
+    // Filter out MVE combo markets — they have comma-separated titles,
+    // start with "yes ", have no real category, and zero volume
+    const clean = markets.filter(m => {
+      const title = m.title || '';
+      const isMVE = title.startsWith('yes ') && title.includes(',');
+      const hasVolume = parseFloat(m.volume_fp || 0) > 0;
+      return !isMVE; // keep all non-MVE, even zero volume (they're real markets)
+    });
+  
     const catVol = {}, catTxn = {}, catOI = {};
     const sportVol = {}, sportTxn = {};
     Object.keys(CAT_CFG).forEach(c => { catVol[c] = 0; catTxn[c] = 0; catOI[c] = 0; });
     Object.keys(SPORT_KW).forEach(s => { sportVol[s] = 0; sportTxn[s] = 0; });
     sportVol['Other'] = 0; sportTxn['Other'] = 0;
-
+  
     let totalVol = 0, totalTxn = 0, totalOI = 0;
     const tops = [];
-
-    markets.forEach(m => {
-      const price = parseFloat(m.notional_value_dollars || 0.5);
-      const vol  = price * parseFloat(m.volume_fp || 0);
-      const txn  = parseInt(m.volume_fp || 0);
-      const oi   = parseFloat(m.open_interest_fp || 0) * price;
-      const cat  = CAT_MAP[m.category] || 'Other';
-
+  
+    clean.forEach(m => {
+      // volume_fp is number of contracts (in fractional shares)
+      // notional_value_dollars is the $1 max payout per contract
+      // actual dollar volume = contracts × avg_price (approx 0.5 if unknown)
+      const contracts = parseFloat(m.volume_fp || 0);
+      const lastPrice = parseFloat(m.last_price_dollars || 0.5);
+      const vol = contracts * lastPrice;
+      const txn = Math.round(contracts);
+      const oi  = parseFloat(m.open_interest_fp || 0) * lastPrice;
+  
+      // Category — try several field names Kalshi uses
+      const rawCat = m.category || m.series_category || '';
+      const cat = CAT_MAP[rawCat] || inferCategory(m.title || '', m.event_ticker || '');
+  
       totalVol += vol; totalTxn += txn; totalOI += oi;
       catVol[cat]  = (catVol[cat]  || 0) + vol;
       catTxn[cat]  = (catTxn[cat]  || 0) + txn;
       catOI[cat]   = (catOI[cat]   || 0) + oi;
-
+  
       if (cat === 'Sports') {
         const t = (m.title || '').toLowerCase();
         let hit = false;
@@ -139,20 +176,23 @@
         }
         if (!hit) { sportVol['Other'] += vol; sportTxn['Other'] += txn; }
       }
-
-      tops.push({ name: m.title || m.ticker, cat, color: CAT_CFG[cat] || '#adb5bd', vol, txn });
+  
+      if (contracts > 0) {
+        tops.push({ name: m.title || m.ticker, cat, color: CAT_CFG[cat] || '#adb5bd', vol, txn });
+      }
     });
-
+  
     tops.sort((a, b) => b.vol - a.vol);
-
+  
     return {
-      totalVol, totalTxn, totalOI, totalMarkets: markets.length,
+      totalVol, totalTxn, totalOI, totalMarkets: clean.length,
       catVol, catTxn, catOI, sportVol, sportTxn,
       topMarkets: tops.slice(0, 16),
       weeklyLabels: [new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })],
       weeklyVol: Object.fromEntries(Object.keys(CAT_CFG).map(c => [c, [catVol[c] || 0]])),
     };
   }
+  
 
   // ── Render ─────────────────────────────────────────────────────────────
   function buildLegend() {
@@ -313,7 +353,7 @@
     try {
       let all = [], cursor = '', page = 0;
       do {
-        const params = { limit: 1000, status: 'open' };
+        const params = { limit: 1000, status: 'open', with_nested_markets: 'false' };
         if (cursor) params.cursor = cursor;
         const json = await fetchMarkets(params);
         all = all.concat(json.markets || []);
